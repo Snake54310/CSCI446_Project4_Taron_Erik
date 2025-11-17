@@ -62,7 +62,7 @@ def saveOutput(GROUP_ID, ALGORITHM, TRACK_NAME, CRASH_POS, track):
     # Formatted name as: [GROUP_ID]_[ALGORITHM]_[TRACK_NAME]_[CRASH_POS].txt
     trackPathArr = TRACK_NAME.split('/')
     trackName = trackPathArr[-1]
-    fileName = GROUP_ID + "_" + ALGORITHM + "_" + trackName + "_" + CRASH_POS + ".txt"
+    fileName = GROUP_ID + "_" + ALGORITHM + "_" + trackName[:-4] + "_" + CRASH_POS + ".txt"
     writeArray = track.getInputTextArray()
     path = track.getBestPath()
     writeString = ''
