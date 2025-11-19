@@ -10,6 +10,7 @@ class Track:
     # ---------------- INSTANTIATION ------------------
     def __init__(self, track, crashReset, inputTextArray):
         self.track = track # numpy array representing raw track grid
+        self.trackShape = track.shape
         # 1 is 'S' aka Start, 2 is 'F' aka Finish, 0 is '.' aka track, 3 is '#', or wall. 
         self.crashReset = crashReset # Boolean, True or False. True if crash means restart, false if crash means start from previous position
         # (with no velocity)
@@ -33,6 +34,28 @@ class Track:
         self.bestPath = [] # stores the best path found by the algorithm
 
         self.numberOfCrashes = 0 # tracks the number of crashes for debugging purposes
+
+        self.trackSize = 0 # number of non-wall elements
+        self.trackIDs = {} # stores a list of non-wall element locations [row, column], as ordered by sequential access of (row, column) index.
+        self.trackLocs = {} # stores all sequential access non-wall indexes, keys being a string representing the [row, column]
+        self.startingCells = [] # contains array of all starting cells. 
+        # For value iteration, the best of self.valIterStates[startingCell][0][0][startingAccx][startingAccy] will be selected as our first position/move.
+        # Then, we will greedily follow that gradient to the finish to obtain our optimal path.
+        
+        for row in self.trackShape[0]:
+            for col in self.trackShape[1]:
+                item = self.track[row][col]
+                if (item == 1):
+                    self.startingCells.append(self.trackSize)
+                    
+                if ((item == 0) or (item == 1) or (item == 2)):
+                    self.trackIDs.update({self.trackSize : [row, col]})
+                    self.trackLocs.update({str([row, col]) : trackSize})
+                    self.trackSize += 1
+                    
+        # array to contain the score for every possible state. The state is represented as:
+        # trackID, x velocity, y velocity, x acceleration, y acceleration
+        self.valIterStates = np.zeros((self.trackSize, 11, 11, 3, 3), dtype = float)
         
     # ---------------- END INSTANTIATION ------------------
 
@@ -100,7 +123,6 @@ class Track:
         # afterward, always update self.previousAcceleration to self.acceleration
         return failed
         '''
-    '''
     def updateVelocity(self):
         outOfBounds = False
         # run sequentially after self.failAcceleration()
@@ -108,8 +130,7 @@ class Track:
         # add values in self.acceleration to self.velocity, ensuring self.velocity is within bounds
         # return outOfBounds = True if the attempted set was out of allowed bounds
         return outOfBounds
-        '''
-    '''
+        
     def updatePosition(self):
         collisionOccurred = False
         # run sequentially after self.updateVelocity()
@@ -120,6 +141,7 @@ class Track:
         # for every position tested that is not a collision, append it to the self.path array
         # if collision is detected, unconditionally update position to the previous tested position and move to next steps
         # (keeps moving until it's up against wall it collides with)
+        # if finish line is encountered, stop it there. 
         
         # if no collision occurs, set new position accordingly. 
         
@@ -128,13 +150,29 @@ class Track:
         
         # return collisionOccurred = True if collision occurred
         return collisionOccurred
-        '''
     # ---------------- END ACTION METHODS  ------------------
 
     # ************************** SHARED METHODS *******************************
     # ------------------------ DO MOVE ---------------------------------
     def makeMode(self, move):
-        return
+        self.position = [move[0], move[1]]
+        self.velocity = [move[2], move[3]]
+        self.acceleration = [move[4], move[5]]
+        self.updateVelocity()
+        self.updatePosition()
+        resultingState = [self.position[0], self.position[1], self.velocity[0], self.velocity[1], self.acceleration[0], self.acceleration[1]]
+        return resultingState
+
+    def attemptFinish(self, move): # checks if move touches or crosses finish line
+        self.position = [move[0], move[1]]
+        self.velocity = [move[2], move[3]]
+        self.acceleration = [move[4], move[5]]
+        self.updateVelocity()
+        self.updatePosition()
+        Finishes = False
+        if (self.track[self.position[0]][self.position[0]] == 2):
+            Finishes = True
+        return Finishes # returns false if move does not complete the race.
     # ------------------------ END DO MOVE ---------------------------------
 
     # ************************** END SHARED METHODS *******************************
@@ -143,7 +181,106 @@ class Track:
     # ************************** VALUE ITERATION METHODS *******************************
     # ------------------------ DO VALUE ITERATION ---------------------------------
     def doValueIteration(self):
+        self.doIterationK0()
+        self.doIternationK1()
+        valueUpdated = True
+        k = 2
+        while valueUpdated:
+            valueUpdated = self.doIternationKn(k)
+            k += 1
+
+        # next, find best starting conditions (use self.startingCells), then follow the gradient greedily to track path to finish line.
+        # update self.moves and self.bestPath along the way
+        
         return
+
+    def doIterationK0(self):
+        locIndex = 0
+        for loc in self.valIterStates:
+            xy = self.trackIDs[locIndex]
+            xpos = xy[0]
+            ypos = xy[1]
+            if (self.track[xpos][ypos] != 2):       
+                for xvel in loc:
+                    for yvel in xvel:
+                        for xacc in yvel:
+                            for yacc in xacc:
+                                self.yacc = -1.0
+        return
+
+    def doIternationK1(self):
+        locIndex = 0
+        for loc in self.valIterStates:
+            xy = self.trackIDs[locIndex]
+            xpos = xy[0]
+            ypos = xy[1]
+            xvelVal = -5
+            for xvel in loc:
+                xVelIndex = xvelVal + 5
+                
+                yvelVal = -5
+                for yvel in xvel:
+                    yVelIndex = yvelVal + 5
+                    
+                    xaccVal = -1
+                    for xacc in yvel:
+                        xAccIndex = xaccVal + 1
+                        
+                        yaccVal = -1
+                        for yacc in xacc:
+                            yAccIndex = yaccVal + 1
+                            move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
+                            finishes = self.attemptFinish(move)
+                            if not finishes: 
+                                self.yacc += -0.999
+                            yaccVal += 1
+                        xaccVal += 1
+                    yvelVal += 1
+                xvelVal += 1
+            locIndex += 1
+        return
+        
+    def doIternationKn(self, k):
+        valueRemoved = -(0.999^k)
+        kMinus2Value = 0
+        for i in range(k - 1): # iterations start from 0, not 1. So i is already k - 1. So i - 1 is k - 2. Really is confusing, though...
+            kMinus2Value += -(1 * (0.999^i))
+
+        valueUpdated = False
+        locIndex = 0
+        for loc in self.valIterStates:
+            xy = self.trackIDs[locIndex]
+            xpos = xy[0]
+            ypos = xy[1]
+            xvelVal = -5
+            for xvel in loc:
+                xVelIndex = xvelVal + 5
+                
+                yvelVal = -5
+                for yvel in xvel:
+                    yVelIndex = yvelVal + 5
+                    
+                    xaccVal = -1
+                    for xacc in yvel:
+                        xAccIndex = xaccVal + 1
+                        
+                        yaccVal = -1
+                        for yacc in xacc:
+                            yAccIndex = yaccVal + 1
+                            move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
+                            nextState = self.makeMove(move)
+                            nextValue = self.valIterStates[nextState[0]][nextState[1]][nextState[2]][nextState[3]][nextState[4]][nextState[5]]
+                            improves = (nextValue >= kMinus2Value)
+                            if not improves: 
+                                self.yacc += valueRemoved
+                                valueUpdated = True
+                            yaccVal += 1
+                        xaccVal += 1
+                    yvelVal += 1
+                xvelVal += 1
+            locIndex += 1
+        return valueUpdated
+        
     # ------------------------ END DO VALUE ITERATION ---------------------------------
 
     # ************************** END VALUE ITERATION METHODS *******************************
