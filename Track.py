@@ -160,7 +160,8 @@ class Track:
         self.acceleration = [move[4], move[5]]
         self.updateVelocity()
         self.updatePosition()
-        resultingState = [self.position[0], self.position[1], self.velocity[0], self.velocity[1], self.acceleration[0], self.acceleration[1]]
+        trackID = self.trackLocs[str([self.position[0], self.position[1]])]
+        resultingState = [trackID, self.velocity[0], self.velocity[1], self.acceleration[0], self.acceleration[1]]
         return resultingState
 
     def attemptFinish(self, move): # checks if move touches or crosses finish line
@@ -269,7 +270,7 @@ class Track:
                             yAccIndex = yaccVal + 1
                             move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
                             nextState = self.makeMove(move)
-                            nextValue = self.valIterStates[nextState[0]][nextState[1]][nextState[2]][nextState[3]][nextState[4]][nextState[5]]
+                            nextValue = self.valIterStates[nextState[0]][nextState[1]][nextState[2]][nextState[3]][nextState[4]]
                             improves = (nextValue >= kMinus2Value)
                             if not improves: 
                                 self.yacc += valueRemoved
