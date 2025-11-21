@@ -56,6 +56,7 @@ class Track:
         # array to contain the score for every possible state. The state is represented as:
         # trackID, x velocity, y velocity, x acceleration, y acceleration
         self.valIterStates = np.zeros((self.trackSize, 11, 11, 3, 3), dtype = float)
+        self.resultingStates = np.zeros((self.trackSize, 11, 11, 3, 3, 5), dtype = int) # lookup table for resulting states from valIterStates
         
     # ---------------- END INSTANTIATION ------------------
 
@@ -218,6 +219,9 @@ class Track:
         self.updateVelocity()
         self.updatePosition()
         Finishes = False
+        oldTrackID = self.trackLocs[str([move[0], move[1]])]
+        trackID = self.trackLocs[str([self.position[0], self.position[1]])]
+        self.resultingStates[oldTrackID][move[2] + 5][move[3] + 5][move[4] + 1][move[5] + 1] = np.array([trackID, self.velocity[0] + 5, self.velocity[1] + 5, self.acceleration[0] + 1, self.acceleration[1] + 1])
         if (self.track[self.position[0]][self.position[1]] == 2):
             Finishes = True
         return Finishes # returns false if move does not complete the race.
@@ -401,8 +405,8 @@ class Track:
                         for yacc in xacc:
                             yAccIndex = yaccVal + 1
                             move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
-                            nextState = self.makeMove(move)
-                            nextValue = self.valIterStates[nextState[0]][nextState[1] + 5][nextState[2] + 5][nextState[3] + 1][nextState[4] + 1]
+                            nextState = self.resultingStates[locIndex][xVelIndex][yVelIndex][xAccIndex][yAccIndex]
+                            nextValue = self.valIterStates[nextState[0]][nextState[1]][nextState[2]][nextState[3]][nextState[4]]
                             improves = (nextValue >= kMinus2Value) # the .8 breaks this comparison, skip for now.
                             if not improves: 
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved # * 0.8
