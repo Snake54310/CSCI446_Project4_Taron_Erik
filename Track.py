@@ -335,14 +335,13 @@ class Track:
                             move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
                             finishes = self.attemptFinish(move)
                             if not finishes:
-                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += -0.999 # * 0.8
+                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += -0.999 * 0.8
                             yaccVal += 1
                         xaccVal += 1
                     yvelVal += 1
                 xvelVal += 1
             locIndex += 1
-            
-        '''    
+        # for 20% chance of failure
         locIndex = 0
         for loc in self.valIterStates:
             xy = self.trackIDs[locIndex]
@@ -372,7 +371,7 @@ class Track:
                         xaccVal += 1
                     yvelVal += 1
                 xvelVal += 1
-            locIndex += 1 '''
+            locIndex += 1 
         return
         
     def doIterationKn(self, k):
@@ -382,7 +381,8 @@ class Track:
             kMinus2Value += -(1 * (0.999**i))
 
         valueUpdated = False
-        pathFound = False # will need to be corrected for non-deterministic
+        pathFound1 = False # will need to be corrected for non-deterministic
+        pathFound2 = False # will need to be corrected for non-deterministic
         locIndex = 0
         for loc in self.valIterStates:
             #print("locIndex: " + str(locIndex))
@@ -404,21 +404,21 @@ class Track:
                         yaccVal = -1
                         for yacc in xacc:
                             yAccIndex = yaccVal + 1
-                            move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
+                            # move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
                             nextState = self.resultingStates[locIndex][xVelIndex][yVelIndex][xAccIndex][yAccIndex]
                             nextValue = np.max(self.valIterStates[nextState[0]][nextState[1]][nextState[2]][:][:])
                             improves = (nextValue >= kMinus2Value) # the .8 breaks this comparison, skip for now.
                             if not improves: 
-                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved # * 0.8
+                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved * 0.8
                                 valueUpdated = True
                             if (self.track[xpos][ypos] == 1) and improves and (xvelVal == 0) and (yvelVal == 0):
-                                pathFound = True # will need to be corrected for non-deterministic
+                                pathFound1 = True # will need to be corrected for non-deterministic
                             yaccVal += 1
                         xaccVal += 1
                     yvelVal += 1
                 xvelVal += 1
             locIndex += 1
-        '''
+        # for 20% chance of failure
         locIndex = 0
         for loc in self.valIterStates:
             #print("locIndex: " + str(locIndex))
@@ -433,9 +433,9 @@ class Track:
                 for yvel in xvel:
                     yVelIndex = yvelVal + 5
 
-                    move = [xpos, ypos, xvelVal, yvelVal, 1, 1]
-                    nextState = self.resultingStates[locIndex][xVelIndex][yVelIndex][xAccIndex][yAccIndex]
-                    nextValue = self.valIterStates[nextState[0]][nextState[1]][nextState[2]][nextState[3]][nextState[4]]
+                    # move = [xpos, ypos, xvelVal, yvelVal, 1, 1]
+                    nextState = self.resultingStates[locIndex][xVelIndex][yVelIndex][1][1]
+                    nextValue = np.max(self.valIterStates[nextState[0]][nextState[1]][nextState[2]][:][:])
                     improves = (nextValue >= kMinus2Value) # the .8 breaks this comparison, skip for now.
                     if not improves: 
                         xaccVal = -1
@@ -448,11 +448,13 @@ class Track:
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved * 0.2
                                 valueUpdated = True
                                 yaccVal += 1
+                            if (self.track[xpos][ypos] == 1) and improves and (xvelVal == 0) and (yvelVal == 0):
+                                pathFound2 = True # will need to be corrected for non-deterministic
                             xaccVal += 1
                     yvelVal += 1
                 xvelVal += 1
-            locIndex += 1 '''
-        if pathFound:
+            locIndex += 1 
+        if pathFound1 and pathFound2:
             valueUpdated = False
         return valueUpdated
         
