@@ -56,7 +56,7 @@ class Track:
         # array to contain the score for every possible state. The state is represented as:
         # trackID, x velocity, y velocity, x acceleration, y acceleration
         self.valIterStates = np.zeros((self.trackSize, 11, 11, 3, 3), dtype = float)
-        self.resultingStates = np.zeros((self.trackSize, 11, 11, 3, 3, 5), dtype = int) # lookup table for resulting states from valIterStates
+        self.resultingStates = np.zeros((self.trackSize, 11, 11, 3, 3, 3), dtype = int) # lookup table for resulting states from valIterStates
         
     # ---------------- END INSTANTIATION ------------------
 
@@ -221,7 +221,7 @@ class Track:
         Finishes = False
         oldTrackID = self.trackLocs[str([move[0], move[1]])]
         trackID = self.trackLocs[str([self.position[0], self.position[1]])]
-        self.resultingStates[oldTrackID][move[2] + 5][move[3] + 5][move[4] + 1][move[5] + 1] = np.array([trackID, self.velocity[0] + 5, self.velocity[1] + 5, self.acceleration[0] + 1, self.acceleration[1] + 1])
+        self.resultingStates[oldTrackID][move[2] + 5][move[3] + 5][move[4] + 1][move[5] + 1] = np.array([trackID, self.velocity[0] + 5, self.velocity[1] + 5])
         if (self.track[self.position[0]][self.position[1]] == 2):
             Finishes = True
         return Finishes # returns false if move does not complete the race.
@@ -253,7 +253,7 @@ class Track:
             startingID = self.trackLocs[str(cell)]
             for xaccIndex in range(3):
                 for yaccIndex in range(3):
-                    startValue = self.valIterStates[startingID][0][0][xaccIndex][yaccIndex]
+                    startValue = self.valIterStates[startingID][5][5][xaccIndex][yaccIndex]
                     if (startValue > bestStartValue):
                         bestStart = [startingID, xaccIndex, yaccIndex]
                         bestStartValue = startValue
@@ -356,7 +356,7 @@ class Track:
                 for yvel in xvel:
                     yVelIndex = yvelVal + 5
                     
-                    move = [xpos, ypos, xvelVal, yvelVal, 0, 0]
+                    move = [xpos, ypos, xvelVal, yvelVal, 1, 1]
                     finishes = self.attemptFinish(move)
                     
                     xaccVal = -1
@@ -406,7 +406,7 @@ class Track:
                             yAccIndex = yaccVal + 1
                             move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
                             nextState = self.resultingStates[locIndex][xVelIndex][yVelIndex][xAccIndex][yAccIndex]
-                            nextValue = self.valIterStates[nextState[0]][nextState[1]][nextState[2]][nextState[3]][nextState[4]]
+                            nextValue = np.max(self.valIterStates[nextState[0]][nextState[1]][nextState[2]][:][:])
                             improves = (nextValue >= kMinus2Value) # the .8 breaks this comparison, skip for now.
                             if not improves: 
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved # * 0.8
@@ -433,23 +433,22 @@ class Track:
                 for yvel in xvel:
                     yVelIndex = yvelVal + 5
 
-                    move = [xpos, ypos, xvelVal, yvelVal, 0, 0]
-                    nextState = self.makeMove(move)
-                    nextValue = self.valIterStates[nextState[0]][nextState[1] + 5][nextState[2] + 5][nextState[3] + 1][nextState[4] + 1]
-                    improves = (nextValue >= kMinus2Value)
-                    xaccVal = -1
-                    for xacc in yvel:
-                        xAccIndex = xaccVal + 1
-                        
-                        yaccVal = -1
-                        for yacc in xacc:
-                            yAccIndex = yaccVal + 1
-                            
-                            if not improves: 
+                    move = [xpos, ypos, xvelVal, yvelVal, 1, 1]
+                    nextState = self.resultingStates[locIndex][xVelIndex][yVelIndex][xAccIndex][yAccIndex]
+                    nextValue = self.valIterStates[nextState[0]][nextState[1]][nextState[2]][nextState[3]][nextState[4]]
+                    improves = (nextValue >= kMinus2Value) # the .8 breaks this comparison, skip for now.
+                    if not improves: 
+                        xaccVal = -1
+                        for xacc in yvel:
+                            xAccIndex = xaccVal + 1
+
+                            yaccVal = -1
+                            for yacc in xacc:
+                                yAccIndex = yaccVal + 1
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved * 0.2
                                 valueUpdated = True
-                            yaccVal += 1
-                        xaccVal += 1
+                                yaccVal += 1
+                            xaccVal += 1
                     yvelVal += 1
                 xvelVal += 1
             locIndex += 1 '''
