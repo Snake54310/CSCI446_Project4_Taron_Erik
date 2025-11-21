@@ -42,15 +42,15 @@ class Track:
         # For value iteration, the best of self.valIterStates[startingCell][0][0][startingAccx][startingAccy] will be selected as our first position/move.
         # Then, we will greedily follow that gradient to the finish to obtain our optimal path.
         
-        for row in self.trackShape[0]:
-            for col in self.trackShape[1]:
+        for row in range(self.trackShape[0]):
+            for col in range(self.trackShape[1]):
                 item = self.track[row][col]
                 if (item == 1):
-                    self.startingCells.append(self.trackSize)
+                    self.startingCells.append([row, col])
                     
                 if ((item == 0) or (item == 1) or (item == 2)):
                     self.trackIDs.update({self.trackSize : [row, col]})
-                    self.trackLocs.update({str([row, col]) : trackSize})
+                    self.trackLocs.update({str([row, col]) : self.trackSize})
                     self.trackSize += 1
                     
         # array to contain the score for every possible state. The state is represented as:
@@ -125,6 +125,20 @@ class Track:
         '''
     def updateVelocity(self):
         outOfBounds = False
+        self.velocity[0] += self.acceleration[0]
+        self.velocity[1] += self.acceleration[1]
+        if (self.velocity[0] > 5):
+            self.velocity[0] = 5
+            outOfBounds = True
+        if (self.velocity[1] > 5):
+            self.velocity[1] = 5
+            outOfBounds = True
+        if (self.velocity[0] < -5):
+            self.velocity[0] = -5
+            outOfBounds = True
+        if (self.velocity[1] < -5):
+            self.velocity[1] = -5
+            outOfBounds = True
         # run sequentially after self.failAcceleration()
         # unconditionally updates self.velocity based upon self.acceleration
         # add values in self.acceleration to self.velocity, ensuring self.velocity is within bounds
@@ -142,9 +156,36 @@ class Track:
         # if collision is detected, unconditionally update position to the previous tested position and move to next steps
         # (keeps moving until it's up against wall it collides with)
         # if finish line is encountered, stop it there. 
+        xCounter = 0
+        yCounter = 0
+        for i in range(5):
+            xCounter += self.velocity[0]
+            yCounter += self.velocity[1]
+            xPosition = int(xCounter / 5) + self.position[0]
+            yPosition = int(yCounter / 5) + self.position[1]
+            locType = self.track[xPosition][yPosition]
+            if locType == 2:
+                self.position[0] = xPosition
+                self.position[1] = yPosition
+                return collisionOccurred
+            if locType == 3:
+                collisionOccurred = True
+                if not self.crashReset:
+                    self.position[0] = int((xCounter - self.velocity[0]) / 5) + self.position[0]
+                    self.position[1] = int((yCounter - self.velocity[1]) / 5) + self.position[1]
+                    self.velocity[0] = 0
+                    self.velocity[1] = 0
+                    return collisionOccurred
+                else:
+                    self.position[0] = self.startingCells[0][0]
+                    self.position[1] = self.startingCells[0][1]
+                    self.velocity[0] = 0
+                    self.velocity[1] = 0
+                    return collisionOccurred
         
         # if no collision occurs, set new position accordingly. 
-        
+        self.position[0] += self.velocity[0]
+        self.position[1] += self.velocity[1]
         # if collision occurs, set self.velocity = 0, add 1 to self.numberOfCrashes
         # if collision occurs, check self.crashReset Variable. If true, set position to start of track
         
@@ -154,10 +195,13 @@ class Track:
 
     # ************************** SHARED METHODS *******************************
     # ------------------------ DO MOVE ---------------------------------
-    def makeMode(self, move):
-        self.position = [move[0], move[1]]
-        self.velocity = [move[2], move[3]]
-        self.acceleration = [move[4], move[5]]
+    def makeMove(self, move):
+        self.position[0] = move[0]
+        self.position[1] = move[1]
+        self.velocity[0] = move[2]
+        self.velocity[1] = move[3]
+        self.acceleration[0] = move[4]
+        self.acceleration[1] = move[5]
         self.updateVelocity()
         self.updatePosition()
         trackID = self.trackLocs[str([self.position[0], self.position[1]])]
@@ -165,13 +209,16 @@ class Track:
         return resultingState
 
     def attemptFinish(self, move): # checks if move touches or crosses finish line
-        self.position = [move[0], move[1]]
-        self.velocity = [move[2], move[3]]
-        self.acceleration = [move[4], move[5]]
+        self.position[0] = move[0]
+        self.position[1] = move[1]
+        self.velocity[0] = move[2]
+        self.velocity[1] = move[3]
+        self.acceleration[0] = move[4]
+        self.acceleration[1] = move[5]
         self.updateVelocity()
         self.updatePosition()
         Finishes = False
-        if (self.track[self.position[0]][self.position[0]] == 2):
+        if (self.track[self.position[0]][self.position[1]] == 2):
             Finishes = True
         return Finishes # returns false if move does not complete the race.
     # ------------------------ END DO MOVE ---------------------------------
@@ -183,15 +230,57 @@ class Track:
     # ------------------------ DO VALUE ITERATION ---------------------------------
     def doValueIteration(self):
         self.doIterationK0()
-        self.doIternationK1()
+        self.doIterationK1()
         valueUpdated = True
         k = 2
-        while valueUpdated:
-            valueUpdated = self.doIternationKn(k)
+        while valueUpdated and (k < 100):
+            print("k: " + str(k))
+            valueUpdated = self.doIterationKn(k)
             k += 1
 
         # next, find best starting conditions (use self.startingCells), then follow the gradient greedily to track path to finish line.
         # update self.moves and self.bestPath along the way
+        # from the best starting cell, track best path deterministically to finish (we are just recording our findings, this is not 
+        # an actual simulation)
+        
+        bestStart = [self.trackLocs[str(self.startingCells[0])], 0, 0]
+        bestStartValue = -99999
+        for cell in self.startingCells:
+            startingID = self.trackLocs[str(cell)]
+            for xaccIndex in range(3):
+                for yaccIndex in range(3):
+                    startValue = self.valIterStates[startingID][0][0][xaccIndex][yaccIndex]
+                    if (startValue > bestStartValue):
+                        bestStart = [startingID, xaccIndex, yaccIndex]
+                        bestStartValue = startValue
+                        
+        startPosition = self.trackIDs[bestStart[0]]
+        self.position[0] = startPosition[0]
+        self.position[1] = startPosition[1]
+        self.bestPath.append([self.position[0], self.position[1]])
+        self.acceleration[0] = bestStart[1] - 1
+        self.acceleration[1] = bestStart[2] - 1
+        self.updateVelocity()
+        self.updatePosition()
+        self.bestMoves = 1
+        self.bestPath.append([self.position[0], self.position[1]])
+        
+        while self.track[self.position[0]][self.position[1]] != 2:
+            bestMoveValue = -99999
+            bestMove = [0, 0]
+            cellID = self.trackLocs[str([self.position[0], self.position[1]])]
+            for xaccIndex in range(3):
+                for yaccIndex in range(3):
+                    moveValue = self.valIterStates[cellID][self.velocity[0] + 5][self.velocity[1] + 5][xaccIndex][yaccIndex]
+                    if (moveValue > bestMoveValue):
+                        bestMove = [xaccIndex - 1, yaccIndex - 1]
+                        bestMoveValue =moveValue
+            self.acceleration[0] = bestMove[0]
+            self.acceleration[1] = bestMove[1]
+            self.updateVelocity()
+            self.updatePosition()
+            self.bestMoves += 1
+            self.bestPath.append([self.position[0], self.position[1]])
         
         return
 
@@ -201,15 +290,24 @@ class Track:
             xy = self.trackIDs[locIndex]
             xpos = xy[0]
             ypos = xy[1]
-            if (self.track[xpos][ypos] != 2):       
+            if (self.track[xpos][ypos] != 2):   
+                xVelIndex = 0
                 for xvel in loc:
+                    yVelIndex = 0
                     for yvel in xvel:
+                        xAccIndex = 0
                         for xacc in yvel:
+                            yAccIndex = 0
                             for yacc in xacc:
-                                self.yacc = -1.0
+                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] = -1.0
+                                yAccIndex += 1
+                            xAccIndex += 1
+                        yVelIndex += 1
+                    xVelIndex += 1
+            locIndex += 1
         return
 
-    def doIternationK1(self):
+    def doIterationK1(self):
         locIndex = 0
         for loc in self.valIterStates:
             xy = self.trackIDs[locIndex]
@@ -232,24 +330,58 @@ class Track:
                             yAccIndex = yaccVal + 1
                             move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
                             finishes = self.attemptFinish(move)
-                            if not finishes: 
-                                self.yacc += -0.999
+                            if not finishes:
+                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += -0.999 # * 0.8
                             yaccVal += 1
                         xaccVal += 1
                     yvelVal += 1
                 xvelVal += 1
             locIndex += 1
-        return
-        
-    def doIternationKn(self, k):
-        valueRemoved = -(0.999^k)
-        kMinus2Value = 0
-        for i in range(k - 1): # iterations start from 0, not 1. So i is already k - 1. So i - 1 is k - 2. Really is confusing, though...
-            kMinus2Value += -(1 * (0.999^i))
-
-        valueUpdated = False
+            
+        '''    
         locIndex = 0
         for loc in self.valIterStates:
+            xy = self.trackIDs[locIndex]
+            xpos = xy[0]
+            ypos = xy[1]
+            xvelVal = -5
+            for xvel in loc:
+                xVelIndex = xvelVal + 5
+                
+                yvelVal = -5
+                for yvel in xvel:
+                    yVelIndex = yvelVal + 5
+                    
+                    move = [xpos, ypos, xvelVal, yvelVal, 0, 0]
+                    finishes = self.attemptFinish(move)
+                    
+                    xaccVal = -1
+                    for xacc in yvel:
+                        xAccIndex = xaccVal + 1
+                        
+                        yaccVal = -1
+                        for yacc in xacc:
+                            yAccIndex = yaccVal + 1
+                            if not finishes: 
+                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += -0.999 * 0.2
+                            yaccVal += 1
+                        xaccVal += 1
+                    yvelVal += 1
+                xvelVal += 1
+            locIndex += 1 '''
+        return
+        
+    def doIterationKn(self, k):
+        valueRemoved = -(0.999**k)
+        kMinus2Value = 0
+        for i in range(k - 1): # iterations start from 0, not 1. So i is already k - 1. So i - 1 is k - 2. Really is confusing, though...
+            kMinus2Value += -(1 * (0.999**i))
+
+        valueUpdated = False
+        pathFound = False # will need to be corrected for non-deterministic
+        locIndex = 0
+        for loc in self.valIterStates:
+            #print("locIndex: " + str(locIndex))
             xy = self.trackIDs[locIndex]
             xpos = xy[0]
             ypos = xy[1]
@@ -270,16 +402,55 @@ class Track:
                             yAccIndex = yaccVal + 1
                             move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
                             nextState = self.makeMove(move)
-                            nextValue = self.valIterStates[nextState[0]][nextState[1]][nextState[2]][nextState[3]][nextState[4]]
-                            improves = (nextValue >= kMinus2Value)
+                            nextValue = self.valIterStates[nextState[0]][nextState[1] + 5][nextState[2] + 5][nextState[3] + 1][nextState[4] + 1]
+                            improves = (nextValue >= kMinus2Value) # the .8 breaks this comparison, skip for now.
                             if not improves: 
-                                self.yacc += valueRemoved
+                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved # * 0.8
                                 valueUpdated = True
+                            if (self.track[xpos][ypos] == 1) and improves and (xvelVal == 0) and (yvelVal == 0):
+                                pathFound = True # will need to be corrected for non-deterministic
                             yaccVal += 1
                         xaccVal += 1
                     yvelVal += 1
                 xvelVal += 1
             locIndex += 1
+        '''
+        locIndex = 0
+        for loc in self.valIterStates:
+            #print("locIndex: " + str(locIndex))
+            xy = self.trackIDs[locIndex]
+            xpos = xy[0]
+            ypos = xy[1]
+            xvelVal = -5
+            for xvel in loc:
+                xVelIndex = xvelVal + 5
+                
+                yvelVal = -5
+                for yvel in xvel:
+                    yVelIndex = yvelVal + 5
+
+                    move = [xpos, ypos, xvelVal, yvelVal, 0, 0]
+                    nextState = self.makeMove(move)
+                    nextValue = self.valIterStates[nextState[0]][nextState[1] + 5][nextState[2] + 5][nextState[3] + 1][nextState[4] + 1]
+                    improves = (nextValue >= kMinus2Value)
+                    xaccVal = -1
+                    for xacc in yvel:
+                        xAccIndex = xaccVal + 1
+                        
+                        yaccVal = -1
+                        for yacc in xacc:
+                            yAccIndex = yaccVal + 1
+                            
+                            if not improves: 
+                                self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved * 0.2
+                                valueUpdated = True
+                            yaccVal += 1
+                        xaccVal += 1
+                    yvelVal += 1
+                xvelVal += 1
+            locIndex += 1 '''
+        if pathFound:
+            valueUpdated = False
         return valueUpdated
         
     # ------------------------ END DO VALUE ITERATION ---------------------------------
