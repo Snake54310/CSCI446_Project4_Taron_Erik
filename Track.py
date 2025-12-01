@@ -66,6 +66,29 @@ class Track:
     def getX(self):
         # sample get expression
         return self.X'''
+    def getFinishInfo(self):
+        fCells = []
+        for r in range(self.trackShape[0]):
+            for c in range(self.trackShape[1]):
+                if self.track[r][c] == 2:
+                    fCells.append((r, c))
+
+        # no finish line on track
+        if not fCells:
+            return None, []
+
+        # all fCells are on the same row in the tracks
+        finish_row = fCells[0][0]
+
+        # find close no wall states to use as goal while coding helps for exploration
+        goal_zone_ids = []
+        for tid, (r, c) in self.trackIDs.items():
+            # includes states from last rows above finish (3 now can change)
+            if r >= finish_row - 3:
+                goal_zone_ids.append(tid)
+
+        return finish_row, goal_zone_ids
+
 
     def getInputTextArray(self):
         # for output purposes
@@ -466,6 +489,250 @@ class Track:
     # ************************** Q-LEARNING METHODS *******************************
     # ------------------------ DO Q-LEARNING ---------------------------------
     def doQLearning(self):
+        # q table with one value for every state or action...
+        # state is just track ID, vs, vy. action is just ax, ay
+        qVals = np.zeros((self.trackSize, 11, 11, 3, 3), dtype=float)
+
+        # different accelerations (only -1, 0 1 for forward stopped reverse)
+        accelerations = []
+        for ax in [-1, 0, 1]:
+            for ay in [-1, 0, 1]:
+                accelerations.append((ax, ay))
+
+        # learning params
+        learningRate = 0.1      # learning rate
+        discount = 0.95     # discounting current vs future reward
+        randomStart = 0.3    # exploration rate from beginning
+        randomMin = 0.01    # random freq
+        randomDecay = 0.995  # after every ep multiply randomStart by .995
+
+        episodeNumber = 20000      # more training (past this laptop starts to suck)
+        maxSteps = 10000
+
+        # get index for the current state
+        def getStateIndex():
+            trackID = self.trackLocs[str([self.position[0], self.position[1]])]
+            vxIDX = self.velocity[0] + 5
+            vyIDX = self.velocity[1] + 5
+            return trackID, vxIDX, vyIDX
+
+        # get index for action
+        def getActionIndex(action):
+            ax, ay = action
+            return ax + 1, ay + 1
+
+        # choose action explore or exploit
+        def chooseAction(trackID, vxIDX, vyIDX, eps):
+            if random.random() < eps:
+                # random action
+                return random.choice(accelerations)
+            # greedy action
+            qSlice = qVals[trackID, vxIDX, vyIDX]
+            qMax = np.max(qSlice)
+            bestIndex = np.argwhere(qSlice == qMax)
+            idx = random.choice(bestIndex)
+            axIDX = int(idx[0])
+            ayIDX = int(idx[1])
+            return axIDX - 1, ayIDX - 1
+
+        # apply an action once during training
+        # crashes and finishes at end of episode
+        def applyActionTrain(action):
+            ax, ay = action
+
+            # attempted accelerate
+            self.acceleration[0] = ax
+            self.acceleration[1] = ay
+
+            # 20 percent chance the acceleration fails (as required)
+            if random.random() < 0.2:
+                self.acceleration[0] = 0
+                self.acceleration[1] = 0
+
+            # TO DISABLE CRASH RESET
+            crashReset = self.crashReset
+            self.crashReset = False
+
+            # update velo and pos
+            self.updateVelocity()
+            crash = self.updatePosition()  # True when hit wall
+
+            # put back original crash reset rules
+            self.crashReset = crashReset
+
+            # if you reach finish then reward (1000 seemed good for me generally
+            if self.track[self.position[0]][self.position[1]] == 2:
+                return 1000.0, True
+
+
+            # crash, consequence of q worked while then continue=false
+            if crash:
+                return -10.0, False
+
+            # a normal move is a small negative cost
+            return -1.0, False
+
+
+
+        # apply an action once during eval
+        # crashes follow the actual guidelines nearest or restart
+        def applyActionEval(action):
+            ax, ay = action
+
+            self.acceleration[0] = ax
+            self.acceleration[1] = ay
+
+            # REMOVED for coding XX
+            # if random.random() < 0.2:
+            #     self.acceleration[0] = 0
+            #     self.acceleration[1] = 0
+    
+            self.updateVelocity()
+            self.updatePosition()
+
+            if self.track[self.position[0]][self.position[1]] == 2:
+                return 0.0, True
+            else:
+                return -1.0, False
+
+
+        # reset best path stats
+        self.bestPath = []
+        self.bestMoves = 9999
+
+        # q learning loop
+        finish_row, goal_zone_ids = self.getFinishInfo()
+
+        for ep in range(episodeNumber):
+
+            #   goal based exploring starts
+            if goal_zone_ids and ep < int(0.5 * episodeNumber):
+                # first .5 of training start near goal
+                if random.random() < 0.7:
+                    # .7 of the time start in goal zone
+                    randID = random.choice(goal_zone_ids)
+                else:
+                    randID = random.randrange(self.trackSize)
+            else:
+                # after uniform over over no wall states
+                randID = random.randrange(self.trackSize)
+
+            start = self.trackIDs[randID]
+
+            self.position[0] = start[0]
+            self.position[1] = start[1]
+            self.velocity[0] = 0
+            self.velocity[1] = 0
+            self.acceleration[0] = 0
+            self.acceleration[1] = 0
+
+
+
+
+            for _step in range(maxSteps):
+                trackID, vxIDX, vyIDX = getStateIndex()
+                action = chooseAction(trackID, vxIDX, vyIDX, randomStart)
+                axIDX, ayIDX = getActionIndex(action)
+
+                # current q val
+                qOld = qVals[trackID, vxIDX, vyIDX, axIDX, ayIDX]
+
+                # action, see reward, next state
+                reward, done = applyActionTrain(action)
+                nextTID, nextVXIDX, nextVYIDX = getStateIndex()
+
+                if done:
+                    # no more reward
+                    qTarg = reward
+                else:
+                    # update based on the most valued next act
+                    next_q_max = np.max(
+                        qVals[nextTID, nextVXIDX, nextVYIDX]
+                    )
+                    qTarg = reward + discount * next_q_max
+
+                # q learn update
+                qVals[trackID, vxIDX, vyIDX, axIDX, ayIDX] = (
+                    qOld + learningRate * (qTarg - qOld)
+                )
+
+                if done:
+                    break
+
+            # reduce exploration after each ep
+            if randomStart > randomMin:
+                randomStart *= randomDecay
+
+        # run w no exploration for bestPath and bestMoves
+        maxSteps = 500
+        bestLength = None
+        bestPath = []
+
+        for start in self.startingCells:
+            # put agent at current start
+            self.position[0] = start[0]
+            self.position[1] = start[1]
+            self.velocity[0] = 0
+            self.velocity[1] = 0
+            self.acceleration[0] = 0
+            self.acceleration[1] = 0
+
+            path = [[self.position[0], self.position[1]]]
+
+            for _step in range(maxSteps):
+                trackID, vxIDX, vyIDX = getStateIndex()
+                # no random choose just the best move
+                qSlice = qVals[trackID, vxIDX, vyIDX]
+                qMax = np.max(qSlice)
+                bestIndex = np.argwhere(qSlice == qMax)
+                idx = random.choice(bestIndex)
+                axIDX = int(idx[0])
+                ayIDX = int(idx[1])
+                action = (axIDX - 1, ayIDX - 1)
+
+                reward, done = applyActionEval(action)
+                path.append([self.position[0], self.position[1]])
+
+                if done:
+                    pathLength = len(path) - 1  # number moves
+                    if (bestLength is None) or (pathLength < bestLength):
+                        bestLength = pathLength
+                        bestPath = path[:]
+                    break
+
+        # if no finish reached in eval still keep last path
+        if bestLength is None:
+            #  use last start cell path
+            start = self.startingCells[0]
+            self.position[0] = start[0]
+            self.position[1] = start[1]
+            self.velocity[0] = 0
+            self.velocity[1] = 0
+            self.acceleration[0] = 0
+            self.acceleration[1] = 0
+
+            path = [[self.position[0], self.position[1]]]
+            for _step in range(maxSteps):
+                trackID, vxIDX, vyIDX = getStateIndex()
+                qSlice = qVals[trackID, vxIDX, vyIDX]
+                qMax = np.max(qSlice)
+                bestIndex = np.argwhere(qSlice == qMax)
+                idx = random.choice(bestIndex)
+                axIDX = int(idx[0])
+                ayIDX = int(idx[1])
+                action = (axIDX - 1, ayIDX - 1)
+
+                reward, done = applyActionEval(action)
+                path.append([self.position[0], self.position[1]])
+                if done:
+                    break
+
+            self.bestPath = path
+            self.bestMoves = len(path) - 1
+        else:
+            self.bestPath = bestPath
+            self.bestMoves = bestLength
+
         return
     # ------------------------ END DO Q-LEARNING ---------------------------------
 
@@ -475,7 +742,238 @@ class Track:
     # ************************** SARSA METHODS *******************************
     # ------------------------ DO SARSA ---------------------------------
     def doSARSA(self):
+        # q table with one value for every state or action...
+        qVals = np.zeros((self.trackSize, 11, 11, 3, 3), dtype=float)
+
+        # possible accelerations ( 1, 0, -1 start stopped go, project outlines)
+        actions = []
+        for ax in [-1, 0, 1]:
+            for ay in [-1, 0, 1]:
+                actions.append((ax, ay))
+
+        # learning params
+        learningRate = 0.1      # learning rate
+        discount = 0.95     # discounting current vs future reward
+        randomStart = 0.3     # exploration rate from beginning
+        randomMin = 0.01    # random freq
+        randomDecay = 0.995   # after every ep multiply randomStart by .995
+
+        episodeNumber = 20000      # more training (past this laptop starts to suck)
+        maxSteps = 10000
+
+        # get index for the current state
+        def getStateIndex():
+            trackID = self.trackLocs[str([self.position[0], self.position[1]])]
+            vxIDX = self.velocity[0] + 5
+            vyIDX = self.velocity[1] + 5
+            return trackID, vxIDX, vyIDX
+
+         # get index for action
+        def getActionIndex(action):
+            ax, ay = action
+            return ax + 1, ay + 1
+
+        # choose action explore or exploit
+        def chooseAction(trackID, vxIDX, vyIDX, eps):
+            if random.random() < eps:
+                return random.choice(actions)
+            qSlice = qVals[trackID, vxIDX, vyIDX]
+            qMax = np.max(qSlice)
+            bestIndex = np.argwhere(qSlice == qMax)
+            idx = random.choice(bestIndex)
+            axIDX = int(idx[0])
+            ayIDX = int(idx[1])
+            return axIDX - 1, ayIDX - 1
+
+        # execute a single training ep
+        # crashes or finish will end the episode
+        def applyActionTrain(action):
+            ax, ay = action
+
+            self.acceleration[0] = ax
+            self.acceleration[1] = ay
+
+            # .2 chance accel fails (proj specs)
+            if random.random() < 0.2:
+                self.acceleration[0] = 0
+                self.acceleration[1] = 0
+
+            # TOGGLE CRASH RESET FOR CODE XX
+            crashReset = self.crashReset
+            self.crashReset = False
+
+            self.updateVelocity()
+            crash = self.updatePosition()
+
+            # put back original crash reset rules
+            self.crashReset = crashReset
+
+            # if you reach finish then reward (1000 seemed good for me generall) 
+            if self.track[self.position[0]][self.position[1]] == 2:
+                return 1000.0, True
+
+
+            # crash, consequence of q worked while then continue=false
+            if crash:
+                return -10.0, False
+
+            # a normal move is a small negative step
+            return -1.0, False
+
+
+
+        # apply action once during eval
+        # crashes follow proj guidelines
+        def applyActionEval(action):
+            ax, ay = action
+
+            self.acceleration[0] = ax
+            self.acceleration[1] = ay
+
+            # .2 accel fails, assignment specs commented for coding XX
+           # if random.random() < 0.2:
+           #     self.acceleration[0] = 0
+           #     self.acceleration[1] = 0
+
+            self.updateVelocity()
+            self.updatePosition()
+
+            if self.track[self.position[0]][self.position[1]] == 2:
+                return 0.0, True
+            else:
+                return -1.0, False
+
+        # count reset for shortest path
+        self.bestPath = []
+        self.bestMoves = 9999
+
+        # sarsa training
+        finish_row, goal_zone_ids = self.getFinishInfo()
+
+        for ep in range(episodeNumber):
+
+            if goal_zone_ids and ep < int(0.5 * episodeNumber):
+                if random.random() < 0.7:
+                    randID = random.choice(goal_zone_ids)
+                else:
+                    randID = random.randrange(self.trackSize)
+            else:
+                randID = random.randrange(self.trackSize)
+
+            start = self.trackIDs[randID]
+
+            self.position[0] = start[0]
+            self.position[1] = start[1]
+            self.velocity[0] = 0
+            self.velocity[1] = 0
+            self.acceleration[0] = 0
+            self.acceleration[1] = 0
+
+            trackID, vxIDX, vyIDX = getStateIndex()
+            action = chooseAction(trackID, vxIDX, vyIDX, randomStart)
+
+            for _step in range(maxSteps):
+                axIDX, ayIDX = getActionIndex(action)
+                qOld = qVals[trackID, vxIDX, vyIDX, axIDX, ayIDX]
+
+                reward, done = applyActionTrain(action)
+                nextTID, nextVXIDX, nextVYIDX = getStateIndex()
+
+                if done:
+                    # ep ends here and updates bc no future value to add
+                    qTarg = reward
+                    qVals[trackID, vxIDX, vyIDX, axIDX, ayIDX] = (
+                        qOld + learningRate * (qTarg - qOld)
+                    )
+                    break
+                else:
+                    # pick next action w current exploration rate
+                    nextAct = chooseAction(nextTID, nextVXIDX, nextVYIDX, randomStart)
+                    nextAXIDX, nextAYIDX = getActionIndex(nextAct)
+                    qNext = qVals[nextTID, nextVXIDX, nextVYIDX, nextAXIDX, nextAYIDX]
+                    qTarg = reward + discount * qNext
+                    qVals[trackID, vxIDX, vyIDX, axIDX, ayIDX] = (
+                        qOld + learningRate * (qTarg - qOld)
+                    )
+
+                    # update state/action for next step
+                    trackID, vxIDX, vyIDX = nextTID, nextVXIDX, nextVYIDX
+                    action = nextAct
+
+            # reduce exploration after every ep
+            if randomStart > randomMin:
+                randomStart *= randomDecay
+
+        # test created policy with greedy sims
+        maxSteps = 500
+        bestLength = None
+        bestPath = []
+
+        for start in self.startingCells:
+            self.position[0] = start[0]
+            self.position[1] = start[1]
+            self.velocity[0] = 0
+            self.velocity[1] = 0
+            self.acceleration[0] = 0
+            self.acceleration[1] = 0
+
+            path = [[self.position[0], self.position[1]]]
+
+            for _step in range(maxSteps):
+                trackID, vxIDX, vyIDX = getStateIndex()
+                # choose action w greatest q val
+                qSlice = qVals[trackID, vxIDX, vyIDX]
+                qMax = np.max(qSlice)
+                bestIndex = np.argwhere(qSlice == qMax)
+                idx = random.choice(bestIndex)
+                axIDX = int(idx[0])
+                ayIDX = int(idx[1])
+                action = (axIDX - 1, ayIDX - 1)
+
+                reward, done = applyActionEval(action)
+                path.append([self.position[0], self.position[1]])
+
+                if done:
+                    pathLength = len(path) - 1
+                    if (bestLength is None) or (pathLength < bestLength):
+                        bestLength = pathLength
+                        bestPath = path[:]
+                    break
+
+        if bestLength is None:
+            # use fallback if if no policy reaches finish
+            start = self.startingCells[0]
+            self.position[0] = start[0]
+            self.position[1] = start[1]
+            self.velocity[0] = 0
+            self.velocity[1] = 0
+            self.acceleration[0] = 0
+            self.acceleration[1] = 0
+
+            path = [[self.position[0], self.position[1]]]
+            for _step in range(maxSteps):
+                trackID, vxIDX, vyIDX = getStateIndex()
+                qSlice = qVals[trackID, vxIDX, vyIDX]
+                qMax = np.max(qSlice)
+                bestIndex = np.argwhere(qSlice == qMax)
+                idx = random.choice(bestIndex)
+                axIDX = int(idx[0])
+                ayIDX = int(idx[1])
+                action = (axIDX - 1, ayIDX - 1)
+
+                reward, done = applyActionEval(action)
+                path.append([self.position[0], self.position[1]])
+                if done:
+                    break
+
+            self.bestPath = path
+            self.bestMoves = len(path) - 1
+        else:
+            self.bestPath = bestPath
+            self.bestMoves = bestLength
+            
         return
+
 
     # ------------------------ END DO SARSA ---------------------------------
 
