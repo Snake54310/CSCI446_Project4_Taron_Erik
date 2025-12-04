@@ -550,15 +550,15 @@ class Track:
                 self.acceleration[1] = 0
 
             # TO DISABLE CRASH RESET
-            crashReset = self.crashReset
-            self.crashReset = False
+            # crashReset = self.crashReset
+            # self.crashReset = False
 
             # update velo and pos
             self.updateVelocity()
             crash = self.updatePosition()  # True when hit wall
 
             # put back original crash reset rules
-            self.crashReset = crashReset
+            # self.crashReset = crashReset
 
             # if you reach finish then reward (1000 seemed good for me generally
             if self.track[self.position[0]][self.position[1]] == 2:
@@ -566,8 +566,8 @@ class Track:
 
 
             # crash, consequence of q worked while then continue=false
-            if crash:
-                return -10.0, False
+            # if crash and self.crashReset:
+                #=return -10.0, False
 
             # a normal move is a small negative cost
             return -1.0, False
@@ -799,14 +799,14 @@ class Track:
                 self.acceleration[1] = 0
 
             # TOGGLE CRASH RESET FOR CODE XX
-            crashReset = self.crashReset
-            self.crashReset = False
+            # crashReset = self.crashReset
+            # self.crashReset = False
 
             self.updateVelocity()
             crash = self.updatePosition()
 
             # put back original crash reset rules
-            self.crashReset = crashReset
+            # self.crashReset = crashReset
 
             # if you reach finish then reward (1000 seemed good for me generall) 
             if self.track[self.position[0]][self.position[1]] == 2:
@@ -814,8 +814,8 @@ class Track:
 
 
             # crash, consequence of q worked while then continue=false
-            if crash:
-                return -10.0, False
+            # if crash:
+                # return -10.0, False
 
             # a normal move is a small negative step
             return -1.0, False
