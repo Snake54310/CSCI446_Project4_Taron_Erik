@@ -41,7 +41,7 @@ class Track:
         self.startingCells = [] # contains array of all starting cells. 
         # For value iteration, the best of self.valIterStates[startingCell][0][0][startingAccx][startingAccy] will be selected as our first position/move.
         # Then, we will greedily follow that gradient to the finish to obtain our optimal path.
-        
+        '''
         for row in range(self.trackShape[0]):
             for col in range(self.trackShape[1]):
                 item = self.track[row][col]
@@ -51,6 +51,16 @@ class Track:
                 if ((item == 0) or (item == 1) or (item == 2)):
                     self.trackIDs.update({self.trackSize : [row, col]})
                     self.trackLocs.update({str([row, col]) : self.trackSize})
+                    self.trackSize += 1''' 
+
+        for row in range(self.trackShape[0]):
+            for col in range(self.trackShape[1]):
+                item = self.track[row][col]
+                if item == 1:
+                    self.startingCells.append((row, col))  
+                if item in (0, 1, 2):
+                    self.trackIDs[self.trackSize] = (row, col)   
+                    self.trackLocs[(row, col)] = self.trackSize  
                     self.trackSize += 1
                     
         # array to contain the score for every possible state. The state is represented as:
@@ -228,7 +238,7 @@ class Track:
         self.acceleration[1] = move[5]
         self.updateVelocity()
         self.updatePosition()
-        trackID = self.trackLocs[str([self.position[0], self.position[1]])]
+        trackID = self.trackLocs[(int(self.position[0]), int(self.position[1]))]
         resultingState = [trackID, self.velocity[0], self.velocity[1], self.acceleration[0], self.acceleration[1]]
         return resultingState
 
@@ -242,8 +252,8 @@ class Track:
         self.updateVelocity()
         self.updatePosition()
         Finishes = False
-        oldTrackID = self.trackLocs[str([move[0], move[1]])]
-        trackID = self.trackLocs[str([self.position[0], self.position[1]])]
+        oldTrackID = self.trackLocs[(move[0], move[1])]
+        trackID = self.trackLocs[(int(self.position[0]), int(self.position[1]))]
         self.resultingStates[oldTrackID][move[2] + 5][move[3] + 5][move[4] + 1][move[5] + 1] = np.array([trackID, self.velocity[0] + 5, self.velocity[1] + 5])
         if (self.track[self.position[0]][self.position[1]] == 2):
             Finishes = True
@@ -270,10 +280,10 @@ class Track:
         # from the best starting cell, track best path deterministically to finish (we are just recording our findings, this is not 
         # an actual simulation)
         
-        bestStart = [self.trackLocs[str(self.startingCells[0])], 0, 0]
+        bestStart = [self.trackLocs[self.startingCells[0]], 0, 0]
         bestStartValue = -99999
         for cell in self.startingCells:
-            startingID = self.trackLocs[str(cell)]
+            startingID = self.trackLocs[cell]
             for xaccIndex in range(3):
                 for yaccIndex in range(3):
                     startValue = self.valIterStates[startingID][5][5][xaccIndex][yaccIndex]
@@ -295,13 +305,13 @@ class Track:
         while self.track[self.position[0]][self.position[1]] != 2:
             bestMoveValue = -99999
             bestMove = [0, 0]
-            cellID = self.trackLocs[str([self.position[0], self.position[1]])]
+            cellID = self.trackLocs[(int(self.position[0]), int(self.position[1]))]
             for xaccIndex in range(3):
                 for yaccIndex in range(3):
                     moveValue = self.valIterStates[cellID][self.velocity[0] + 5][self.velocity[1] + 5][xaccIndex][yaccIndex]
                     if (moveValue > bestMoveValue):
                         bestMove = [xaccIndex - 1, yaccIndex - 1]
-                        bestMoveValue =moveValue
+                        bestMoveValue = moveValue
             self.acceleration[0] = bestMove[0]
             self.acceleration[1] = bestMove[1]
             self.updateVelocity()
@@ -511,7 +521,7 @@ class Track:
 
         # get index for the current state
         def getStateIndex():
-            trackID = self.trackLocs[str([self.position[0], self.position[1]])]
+            trackID = self.trackLocs[(int(self.position[0]), int(self.position[1]))]
             vxIDX = self.velocity[0] + 5
             vyIDX = self.velocity[1] + 5
             return trackID, vxIDX, vyIDX
@@ -763,7 +773,7 @@ class Track:
 
         # get index for the current state
         def getStateIndex():
-            trackID = self.trackLocs[str([self.position[0], self.position[1]])]
+            trackID = self.trackLocs[(int(self.position[0]), int(self.position[1]))]
             vxIDX = self.velocity[0] + 5
             vyIDX = self.velocity[1] + 5
             return trackID, vxIDX, vyIDX
