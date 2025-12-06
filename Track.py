@@ -67,6 +67,8 @@ class Track:
         # trackID, x velocity, y velocity, x acceleration, y acceleration
         self.valIterStates = np.zeros((self.trackSize, 11, 11, 3, 3), dtype = float)
         self.resultingStates = np.zeros((self.trackSize, 11, 11, 3, 3, 3), dtype = int) # lookup table for resulting states from valIterStates
+
+        self.opCount = 0
         
     # ---------------- END INSTANTIATION ------------------
 
@@ -111,6 +113,9 @@ class Track:
     def getBestMoves(self):
         # for output purposes
         return self.bestMoves
+
+    def getOperations(self):
+        return self.opCount
         
     '''    
     def getIsStart(self, posiiton):
@@ -337,6 +342,7 @@ class Track:
                             yAccIndex = 0
                             for yacc in xacc:
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] = -1.0
+                                self.opCount += 1
                                 yAccIndex += 1
                             xAccIndex += 1
                         yVelIndex += 1
@@ -367,6 +373,7 @@ class Track:
                             yAccIndex = yaccVal + 1
                             move = [xpos, ypos, xvelVal, yvelVal, xaccVal, yaccVal]
                             finishes = self.attemptFinish(move)
+                            self.opCount += 1
                             if not finishes:
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += -0.999 * 0.8
                             yaccVal += 1
@@ -398,6 +405,7 @@ class Track:
                         yaccVal = -1
                         for yacc in xacc:
                             yAccIndex = yaccVal + 1
+                            self.opCount += 1
                             if not finishes: 
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += -0.999 * 0.2
                             yaccVal += 1
@@ -441,6 +449,7 @@ class Track:
                             nextState = self.resultingStates[locIndex][xVelIndex][yVelIndex][xAccIndex][yAccIndex]
                             nextValue = np.max(self.valIterStates[nextState[0]][nextState[1]][nextState[2]][:][:])
                             improves = (nextValue >= kMinus2Value) # the .8 breaks this comparison, skip for now.
+                            self.opCount += 1
                             if not improves: 
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved * 0.8
                                 valueUpdated = True
@@ -481,6 +490,7 @@ class Track:
                                 self.valIterStates[locIndex, xVelIndex, yVelIndex, xAccIndex, yAccIndex] += valueRemoved * 0.2
                                 valueUpdated = True
                                 yaccVal += 1
+                            self.opCount += 1
                             if (self.track[xpos][ypos] == 1) and improves and (xvelVal == 0) and (yvelVal == 0):
                                 pathFound2 = True # will need to be corrected for non-deterministic
                             xaccVal += 1
@@ -548,6 +558,7 @@ class Track:
         # apply an action once during training
         # crashes and finishes at end of episode
         def applyActionTrain(action):
+            self.opCount += 1
             ax, ay = action
 
             # attempted accelerate
@@ -798,6 +809,7 @@ class Track:
         # execute a single training ep
         # crashes or finish will end the episode
         def applyActionTrain(action):
+            self.opCount += 1
             ax, ay = action
 
             self.acceleration[0] = ax

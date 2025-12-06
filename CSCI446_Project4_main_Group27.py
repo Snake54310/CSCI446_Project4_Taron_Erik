@@ -156,6 +156,7 @@ def main(GROUP_ID, ALGORITHM, TRACK_NAME, CRASH_POS):
         sys.exit() # exit program
 
     print("Moves of Best Run: " + str(track.getBestMoves()))
+    print("Operations to Find Solution: " + str(track.getOperations()))
 
     saveOutput(GROUP_ID, ALGORITHM, TRACK_NAME, CRASH_POS, track)
     
